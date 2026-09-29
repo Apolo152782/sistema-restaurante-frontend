@@ -122,12 +122,18 @@ function KitchenOrderCard({
                 className={`inline-flex items-center gap-1 text-xs px-3 py-1 rounded-full border ${
                   order.status.toLowerCase() === "listo"
                     ? "bg-emerald-500/20 border-emerald-500/30 text-emerald-400"
-                    : "bg-yellow-500/20 border-yellow-500/30 text-yellow-400"
+                    : order.status.toLowerCase() === "cancelado" &&
+                        order.mantenerParaVenta
+                      ? "bg-orange-500/20 border-orange-500/30 text-orange-400"
+                      : "bg-yellow-500/20 border-yellow-500/30 text-yellow-400"
                 }`}
               >
                 {order.status.toLowerCase() === "listo"
                   ? "Listo"
-                  : "En preparación"}
+                  : order.status.toLowerCase() === "cancelado" &&
+                      order.mantenerParaVenta
+                    ? "Cancelado · Para venta"
+                    : "En preparación"}
               </span>
             </div>
           </div>
@@ -202,7 +208,9 @@ function KitchenOrderCard({
 
       {/* Actions */}
       <div className="flex gap-3">
-        {order.status.toLowerCase() === "pendiente" && (
+        {(order.status.toLowerCase() === "pendiente" ||
+          (order.status.toLowerCase() === "cancelado" &&
+            order.mantenerParaVenta === true)) && (
           <button
             onClick={() => handleUpdateStatus("LISTO")}
             className="flex-1 py-3 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 font-bold text-sm flex items-center justify-center gap-2 hover:bg-emerald-500/30 transition-all"
@@ -238,11 +246,15 @@ export function KitchenMode() {
     return () => clearInterval(interval);
   }, []);
 
-  const activeOrders = pedidos.filter(
-    (o) =>
-      o.status.toLowerCase() === "pendiente" ||
-      o.status.toLowerCase() === "listo",
-  );
+  const activeOrders = pedidos.filter((o) => {
+    const estado = o.status.toLowerCase();
+
+    return (
+      estado === "pendiente" ||
+      estado === "listo" ||
+      (estado === "cancelado" && o.mantenerParaVenta === true)
+    );
+  });
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {

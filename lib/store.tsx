@@ -2,11 +2,17 @@
 
 import React, { createContext, useContext, useReducer, useEffect } from "react";
 
+import { obtenerConfiguracion } from "@/lib/configuracion";
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 
 export type UserRole = "dueno" | "empleado";
 export type OrderType = "mesa" | "para-llevar" | "domicilio";
-export type OrderStatus = "pendiente" | "listo" | "entregado" | "pagado";
+export type OrderStatus =
+  | "pendiente"
+  | "listo"
+  | "entregado"
+  | "pagado"
+  | "cancelado";
 export type PaymentMethod = "efectivo" | "transferencia" | "mixto";
 export type IngredientUnit =
   | "unidad"
@@ -65,7 +71,9 @@ export interface RecipeIngredient {
 
 export interface ProductExtra {
   id: string;
+  ingredientId: string;
   name: string;
+  quantity: number;
   price: number;
 }
 
@@ -82,7 +90,9 @@ export interface Product {
 
 export interface OrderItemExtra {
   extraId: string;
+  ingredientId: string;
   name: string;
+  quantity: number;
   price: number;
 }
 
@@ -115,6 +125,7 @@ export interface Order {
   transferAmount?: number;
   paidAt?: string;
   productionCost?: number;
+  mantenerParaVenta?: boolean;
 }
 
 export interface OperationalExpense {
@@ -158,6 +169,8 @@ export interface Settings {
   phone: string;
   email: string;
   currency: string;
+  workdayStart: string;
+  workdayEnd: string;
   lowStockThreshold: number;
   expirationAlertDays: number;
   defaultPrepTimes: number[];
@@ -185,6 +198,8 @@ const defaultSettings: Settings = {
   phone: "+57 300 123 4567",
   email: "info@fastburger.com",
   currency: "COP",
+  workdayStart: "17:00",
+  workdayEnd: "01:00",
   lowStockThreshold: 10,
   expirationAlertDays: 3,
   defaultPrepTimes: [10, 15, 20],
@@ -332,11 +347,7 @@ const initialProducts: Product[] = [
       { ingredientId: "i3", quantity: 30 },
       { ingredientId: "i5", quantity: 20 },
     ],
-    extras: [
-      { id: "e1", name: "Extra queso", price: 2000 },
-      { id: "e2", name: "Extra carne", price: 3000 },
-      { id: "e3", name: "Sin cebolla", price: 0 },
-    ],
+    extras: [],
     active: true,
   },
   {
@@ -350,10 +361,7 @@ const initialProducts: Product[] = [
       { ingredientId: "i3", quantity: 20 },
       { ingredientId: "i5", quantity: 15 },
     ],
-    extras: [
-      { id: "e4", name: "Extra salchicha", price: 2500 },
-      { id: "e5", name: "Extra papas", price: 3000 },
-    ],
+    extras: [],
     active: true,
   },
   {
@@ -368,10 +376,7 @@ const initialProducts: Product[] = [
       { ingredientId: "i3", quantity: 40 },
       { ingredientId: "i5", quantity: 25 },
     ],
-    extras: [
-      { id: "e6", name: "Extra queso doble", price: 3000 },
-      { id: "e7", name: "Bacon", price: 3500 },
-    ],
+    extras: [],
     active: true,
   },
   {
@@ -380,7 +385,7 @@ const initialProducts: Product[] = [
     price: 7000,
     category: "Acompañamientos",
     recipe: [{ ingredientId: "i6", quantity: 200 }],
-    extras: [{ id: "e8", name: "Salsa BBQ", price: 1000 }],
+    extras: [],
     active: true,
   },
   {
@@ -394,7 +399,7 @@ const initialProducts: Product[] = [
       { ingredientId: "i4", quantity: 30 },
       { ingredientId: "i5", quantity: 20 },
     ],
-    extras: [{ id: "e9", name: "Extra salsa", price: 1000 }],
+    extras: [],
     active: true,
   },
 ];
@@ -412,7 +417,7 @@ const initialOrders: Order[] = [
         productName: "Hamburguesa Clásica",
         quantity: 2,
         unitPrice: 15000,
-        extras: [{ extraId: "e1", name: "Extra queso", price: 2000 }],
+        extras: [],
         subtotal: 34000,
       },
       {
@@ -443,7 +448,7 @@ const initialOrders: Order[] = [
         productName: "Perro Caliente",
         quantity: 1,
         unitPrice: 10000,
-        extras: [{ extraId: "e5", name: "Extra papas", price: 3000 }],
+        extras: [],
         subtotal: 13000,
       },
     ],
@@ -806,6 +811,27 @@ const AppContext = createContext<{
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
+
+  useEffect(() => {
+    const cargarConfiguracion = async () => {
+      try {
+        const configuracion = await obtenerConfiguracion();
+
+        dispatch({
+          type: "UPDATE_SETTINGS",
+          payload: {
+            workdayStart: configuracion.workdayStart,
+            workdayEnd: configuracion.workdayEnd,
+          },
+        });
+      } catch (error) {
+        console.error("No fue posible cargar la configuración:", error);
+      }
+    };
+
+    cargarConfiguracion();
+  }, []);
+
   return (
     <AppContext.Provider value={{ state, dispatch }}>
       {children}
@@ -855,6 +881,19 @@ export function calculateProductCost(
     const unitCost = getIngredientUnitCostFIFO(ingredient);
     return total + unitCost * ri.quantity;
   }, 0);
+}
+
+export function calculateExtraCost(
+  extra: ProductExtra,
+  ingredients: Ingredient[],
+): number {
+  const ingredient = ingredients.find((i) => i.id === extra.ingredientId);
+
+  if (!ingredient) return 0;
+
+  const unitCost = getIngredientUnitCostFIFO(ingredient);
+
+  return unitCost * extra.quantity;
 }
 
 export function calculateAvailableQuantity(

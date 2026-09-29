@@ -31,24 +31,28 @@ import {
   Search,
   Filter,
 } from "lucide-react";
+import { obtenerIngredientes } from "@/lib/ingredientes";
 import { CreateOrderModal } from "./CreateOrderModal";
 import { OrderDetailModal } from "./OrderDetailModal";
+import { CancelOrderModal } from "./CancelOrderModal";
 import {
   obtenerPedidos,
   eliminarPedido,
   actualizarEstadoPedido,
   agregarTiempo,
 } from "@/lib/pedidos";
-
 function OrderCard({
   order,
   onView,
   onDelete,
+  onCancel,
 }: {
   order: Order;
   onView: (o: Order) => void;
   onDelete: () => Promise<void>;
+  onCancel: (o: Order) => void;
 }) {
+  const { dispatch } = useApp();
   const [elapsed, setElapsed] = useState(getOrderElapsedMinutes(order));
   const totalMinutes = order.estimatedMinutes + order.additionalMinutes;
   const timerStatus = getOrderTimerStatus(order);
@@ -61,6 +65,15 @@ function OrderCard({
     try {
       await actualizarEstadoPedido(order.id, status);
 
+      if (status === "LISTO") {
+        const ingredientes = await obtenerIngredientes();
+
+        dispatch({
+          type: "CARGAR_INGREDIENTES",
+          payload: ingredientes,
+        });
+      }
+
       await onDelete();
     } catch (error) {
       console.error(error);
@@ -68,6 +81,25 @@ function OrderCard({
       alert("No fue posible actualizar el estado del pedido.");
     }
   };
+
+  function getBusinessDayBounds(
+    date: Date,
+    startHour: number,
+    endHour: number,
+  ) {
+    const start = new Date(date);
+    start.setHours(startHour, 0, 0, 0);
+
+    const end = new Date(start);
+
+    if (endHour <= startHour) {
+      end.setDate(end.getDate() + 1);
+    }
+
+    end.setHours(endHour, 0, 0, 0);
+
+    return { start, end };
+  }
 
   const handleDelete = async (id: string) => {
     if (!window.confirm("¿Deseas eliminar este pedido?")) return;
@@ -119,6 +151,12 @@ function OrderCard({
       bg: "bg-primary/10",
       border: "border-primary/30",
     },
+    cancelado: {
+      label: "Cancelado",
+      color: "text-red-400",
+      bg: "bg-red-500/10",
+      border: "border-red-500/30",
+    },
   };
   const typeConfig = {
     mesa: { label: "Mesa", icon: Users, color: "text-purple-400" },
@@ -158,31 +196,38 @@ function OrderCard({
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-black text-foreground">
-              #{order.orderNumber}
-            </span>
-            <span
-              className={`text-xs px-2 py-0.5 rounded-full font-medium ${sc.bg} ${sc.color} border ${sc.border}`}
-            >
-              {sc.label}
-            </span>
-            {delayed &&
-              (order.status.toLowerCase() === "pendiente" ||
-                order.status.toLowerCase() === "listo") && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30 flex items-center gap-1">
-                  <AlertTriangle className="w-3 h-3" />
-                  Retrasado
-                </span>
-              )}
-          </div>
-          <div className={`flex items-center gap-1 mt-1 text-xs ${tc.color}`}>
-            <tc.icon className="w-3 h-3" />
-            {tc.label}
-            {order.type === "mesa" && ` · Mesa ${order.tableNumber}`}
-            {order.type !== "mesa" &&
-              order.customerName &&
-              ` · ${order.customerName}`}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center">
+              <span className="text-sm font-black text-foreground truncate">
+                #{order.orderNumber}
+              </span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 mt-2">
+              <span
+                className={`text-xs px-2 py-0.5 rounded-full font-medium ${sc.bg} ${sc.color} border ${sc.border}`}
+              >
+                {sc.label}
+              </span>
+
+              {delayed &&
+                (order.status.toLowerCase() === "pendiente" ||
+                  order.status.toLowerCase() === "listo") && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30 flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" />
+                    Retrasado
+                  </span>
+                )}
+            </div>
+
+            <div className={`flex items-center gap-1 mt-2 text-xs ${tc.color}`}>
+              <tc.icon className="w-3 h-3" />
+              {tc.label}
+              {order.type === "mesa" && ` · Mesa ${order.tableNumber}`}
+              {order.type !== "mesa" &&
+                order.customerName &&
+                ` · ${order.customerName}`}
+            </div>
           </div>
         </div>
         <div className="flex items-start gap-2">
@@ -310,20 +355,53 @@ function OrderCard({
       )}
 
       {/* Actions */}
-      <div className="flex gap-2">
-        <button
-          onClick={() => onView(order)}
-          className="flex-1 py-2 rounded-xl glass border border-white/10 text-xs font-semibold text-foreground hover:border-primary/30 transition-all"
-        >
-          Detalles
-        </button>
-
-        {order.status.toLowerCase() === "entregado" && (
+      <div className="space-y-2">
+        <div className="flex gap-2">
           <button
             onClick={() => onView(order)}
-            className="flex-1 py-2 rounded-xl bg-primary/20 border border-primary/30 text-xs font-semibold text-primary hover:bg-primary/30 transition-all"
+            className="flex-1 py-2 rounded-xl glass border border-white/10 text-xs font-semibold text-foreground hover:border-primary/30 transition-all"
           >
-            Pagar
+            Detalles
+          </button>
+
+          {(order.status.toLowerCase() === "pendiente" ||
+            (order.status.toLowerCase() === "cancelado" &&
+              order.mantenerParaVenta === true)) && (
+            <button
+              onClick={() => handleUpdateStatus("LISTO")}
+              className="flex-1 py-2 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-xs font-semibold text-emerald-400 hover:bg-emerald-500/30 transition-all"
+            >
+              Marcar Listo
+            </button>
+          )}
+
+          {order.status.toLowerCase() === "listo" && (
+            <button
+              onClick={() => handleUpdateStatus("ENTREGADO")}
+              className="flex-1 py-2 rounded-xl bg-blue-500/20 border border-blue-500/30 text-xs font-semibold text-blue-400 hover:bg-blue-500/30 transition-all"
+            >
+              Entregar
+            </button>
+          )}
+
+          {order.status.toLowerCase() === "entregado" && (
+            <button
+              onClick={() => onView(order)}
+              className="flex-1 py-2 rounded-xl bg-primary/20 border border-primary/30 text-xs font-semibold text-primary hover:bg-primary/30 transition-all"
+            >
+              Pagar
+            </button>
+          )}
+        </div>
+
+        {(order.status.toLowerCase() === "pendiente" ||
+          (order.status.toLowerCase() === "listo" &&
+            order.mantenerParaVenta !== true)) && (
+          <button
+            onClick={() => onCancel(order)}
+            className="w-full py-2.5 rounded-xl bg-red-500/20 border border-red-500/30 text-xs font-semibold text-red-400 hover:bg-red-500/30 transition-all"
+          >
+            Cancelar Pedido
           </button>
         )}
       </div>
@@ -331,15 +409,33 @@ function OrderCard({
   );
 }
 
+function getBusinessDayBounds(date: Date, startHour: number, endHour: number) {
+  const start = new Date(date);
+  start.setHours(startHour, 0, 0, 0);
+
+  const end = new Date(start);
+
+  if (endHour <= startHour) {
+    end.setDate(end.getDate() + 1);
+  }
+
+  end.setHours(endHour, 0, 0, 0);
+
+  return { start, end };
+}
+
 export function OrdersPage() {
   const { state, dispatch } = useApp();
   const [pedidos, setPedidos] = useState<any[]>([]);
   const isOwner = state.user?.role === "dueno";
   const [showCreate, setShowCreate] = useState(false);
+  const [editOrder, setEditOrder] = useState<Order | undefined>();
+  const [cancelOrder, setCancelOrder] = useState<Order | null>(null);
   const [viewOrder, setViewOrder] = useState<Order | null>(null);
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "all">("all");
   const [typeFilter, setTypeFilter] = useState<OrderType | "all">("all");
   const [search, setSearch] = useState("");
+  const [selectedDate, setSelectedDate] = useState(new Date());
 
   const cargarPedidos = async () => {
     try {
@@ -355,8 +451,36 @@ export function OrdersPage() {
     cargarPedidos();
   }, []);
 
-  const filtered = useMemo(() => {
+  const businessOrders = useMemo(() => {
+    const [sh, sm] = state.settings.workdayStart.split(":").map(Number);
+    const [eh, em] = state.settings.workdayEnd.split(":").map(Number);
+
+    const { start, end } = getBusinessDayBounds(selectedDate, sh, eh);
+
+    start.setMinutes(sm);
+    end.setMinutes(em);
+
+    console.log("JORNADA", {
+      workdayStart: state.settings.workdayStart,
+      workdayEnd: state.settings.workdayEnd,
+      start: start.toString(),
+      end: end.toString(),
+      pedidos: pedidos.map((o: any) => ({
+        id: o.id,
+        numero: o.orderNumber,
+        createdAt: o.createdAt,
+        fechaInterpretada: new Date(o.createdAt).toString(),
+      })),
+    });
+
     return pedidos.filter((o: any) => {
+      const d = new Date(o.createdAt);
+      return d >= start && d <= end;
+    });
+  }, [pedidos, state.settings, selectedDate]);
+
+  const filtered = useMemo(() => {
+    return businessOrders.filter((o: any) => {
       if (statusFilter !== "all" && o.status.toLowerCase() !== statusFilter)
         return false;
 
@@ -371,19 +495,20 @@ export function OrdersPage() {
 
       return true;
     });
-  }, [pedidos, statusFilter, typeFilter, search]);
+  }, [businessOrders, statusFilter, typeFilter, search]);
 
   const counts = useMemo(
     () => ({
-      pendiente: pedidos.filter((o: any) => o.status === "PENDIENTE").length,
-
-      listo: pedidos.filter((o: any) => o.status === "LISTO").length,
-
-      entregado: pedidos.filter((o: any) => o.status === "ENTREGADO").length,
-
-      pagado: pedidos.filter((o: any) => o.status === "PAGADO").length,
+      pendiente: businessOrders.filter((o: any) => o.status === "PENDIENTE")
+        .length,
+      listo: businessOrders.filter((o: any) => o.status === "LISTO").length,
+      entregado: businessOrders.filter((o: any) => o.status === "ENTREGADO")
+        .length,
+      pagado: businessOrders.filter((o: any) => o.status === "PAGADO").length,
+      cancelado: businessOrders.filter((o: any) => o.status === "CANCELADO")
+        .length,
     }),
-    [pedidos],
+    [businessOrders],
   );
 
   return (
@@ -395,7 +520,7 @@ export function OrdersPage() {
             Gestión de Pedidos
           </h2>
           <p className="text-sm text-muted-foreground">
-            {pedidos.length} pedidos en total
+            {businessOrders.length} pedidos en la jornada
           </p>
         </div>
         <button
@@ -408,10 +533,11 @@ export function OrdersPage() {
       </div>
 
       {/* Status summary */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
         {[
           {
             key: "pendiente",
+            icon: "🟡",
             label: "Pendientes",
             count: counts.pendiente,
             color: "text-yellow-400",
@@ -419,6 +545,7 @@ export function OrdersPage() {
           },
           {
             key: "listo",
+            icon: "🟢",
             label: "Listos",
             count: counts.listo,
             color: "text-emerald-400",
@@ -426,6 +553,7 @@ export function OrdersPage() {
           },
           {
             key: "entregado",
+            icon: "🔵",
             label: "Entregados",
             count: counts.entregado,
             color: "text-blue-400",
@@ -433,10 +561,19 @@ export function OrdersPage() {
           },
           {
             key: "pagado",
+            icon: "🟠",
             label: "Pagados",
             count: counts.pagado,
             color: "text-primary",
             bg: "bg-primary/10",
+          },
+          {
+            key: "cancelado",
+            icon: "🔴",
+            label: "Cancelados",
+            count: counts.cancelado,
+            color: "text-red-400",
+            bg: "bg-red-500/10",
           },
         ].map((s) => (
           <button
@@ -446,18 +583,27 @@ export function OrdersPage() {
                 s.key === statusFilter ? "all" : (s.key as OrderStatus),
               )
             }
-            className={`rounded-xl p-4 text-left transition-all border ${
+            className={`rounded-xl p-3 text-left transition-all border ${
               statusFilter === s.key
                 ? `${s.bg} border-current ${s.color}`
                 : "stat-card border-white/8"
             }`}
           >
-            <div
-              className={`text-2xl font-black ${statusFilter === s.key ? s.color : "text-foreground"}`}
-            >
-              {s.count}
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-lg">{s.icon}</span>
+
+              <div
+                className={`text-xl font-black ${
+                  statusFilter === s.key ? s.color : "text-foreground"
+                }`}
+              >
+                {s.count}
+              </div>
             </div>
-            <div className="text-xs text-muted-foreground">{s.label}</div>
+
+            <div className="text-[11px] text-muted-foreground leading-tight">
+              {s.label}
+            </div>
           </button>
         ))}
       </div>
@@ -504,6 +650,7 @@ export function OrdersPage() {
                 order={order}
                 onView={setViewOrder}
                 onDelete={cargarPedidos}
+                onCancel={setCancelOrder}
               />
             ))}
         </div>
@@ -511,7 +658,11 @@ export function OrdersPage() {
 
       {showCreate && (
         <CreateOrderModal
-          onClose={() => setShowCreate(false)}
+          order={editOrder}
+          onClose={() => {
+            setShowCreate(false);
+            setEditOrder(undefined);
+          }}
           onCreated={cargarPedidos}
         />
       )}
@@ -519,6 +670,19 @@ export function OrdersPage() {
         <OrderDetailModal
           order={viewOrder}
           onClose={() => setViewOrder(null)}
+          onUpdated={cargarPedidos}
+          onEdit={(order) => {
+            setViewOrder(null);
+            setEditOrder(order);
+            setShowCreate(true);
+          }}
+        />
+      )}
+
+      {cancelOrder && (
+        <CancelOrderModal
+          order={cancelOrder}
+          onClose={() => setCancelOrder(null)}
           onUpdated={cargarPedidos}
         />
       )}

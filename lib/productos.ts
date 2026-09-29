@@ -7,7 +7,24 @@ export async function obtenerProductos() {
     throw new Error("No fue posible obtener los productos.");
   }
 
-  return await respuesta.json();
+  const productos = await respuesta.json();
+
+  return productos.map((producto: any) => ({
+    ...producto,
+
+    recipe: producto.recipe.map((r: any) => ({
+      ingredientId: r.ingredienteId,
+      quantity: r.cantidad,
+    })),
+
+    extras: (producto.extras ?? []).map((extra: any) => ({
+      id: extra.id,
+      ingredientId: extra.ingredienteId,
+      name: extra.name,
+      quantity: extra.cantidad,
+      price: extra.price,
+    })),
+  }));
 }
 
 export async function crearProducto(producto: any) {

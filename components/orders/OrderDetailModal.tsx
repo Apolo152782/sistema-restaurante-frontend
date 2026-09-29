@@ -9,10 +9,12 @@ export function OrderDetailModal({
   order,
   onClose,
   onUpdated,
+  onEdit,
 }: {
   order: Order;
   onClose: () => void;
   onUpdated: () => Promise<void>;
+  onEdit: (order: Order) => void;
 }) {
   const [paymentMethod, setPaymentMethod] = useState<
     "efectivo" | "transferencia" | "mixto"
@@ -87,6 +89,33 @@ export function OrderDetailModal({
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
+          {/* Información del pedido */}
+          <div className="glass rounded-xl p-4 border border-white/10 space-y-2">
+            <div className="text-xs text-muted-foreground">
+              📅 <span className="font-semibold">Creado:</span>{" "}
+              {order.createdAt
+                ? `${new Date(order.createdAt).toLocaleDateString("es-CO")} · ${new Date(
+                    order.createdAt,
+                  ).toLocaleTimeString("es-CO", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}`
+                : "No disponible"}
+            </div>
+
+            {order.paidAt && (
+              <div className="text-xs text-muted-foreground">
+                💳 <span className="font-semibold">Pagado:</span>{" "}
+                {`${new Date(order.paidAt).toLocaleDateString("es-CO")} · ${new Date(
+                  order.paidAt,
+                ).toLocaleTimeString("es-CO", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}`}
+              </div>
+            )}
+          </div>
+
           {/* Items */}
           <div className="space-y-3">
             <h3 className="text-sm font-semibold text-foreground">Productos</h3>
@@ -230,12 +259,23 @@ export function OrderDetailModal({
             </span>
           </div>
           <div className="flex gap-3">
+            {(order.status.toLowerCase() === "pendiente" ||
+              order.status.toLowerCase() === "listo") && (
+              <button
+                onClick={() => onEdit(order)}
+                className="flex-1 py-2.5 rounded-xl border border-primary/30 bg-primary/10 text-primary text-sm font-semibold hover:bg-primary/20 transition-all"
+              >
+                Editar Pedido
+              </button>
+            )}
+
             <button
               onClick={onClose}
               className="flex-1 py-2.5 rounded-xl glass border border-white/10 text-sm text-muted-foreground hover:text-foreground transition-all"
             >
               Cerrar
             </button>
+
             {order.status.toLowerCase() === "entregado" && (
               <button
                 onClick={handlePayment}

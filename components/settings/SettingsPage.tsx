@@ -1,13 +1,35 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { useApp, Settings } from "@/lib/store"
+import { useState, useEffect } from "react";
+import { useApp, Settings } from "@/lib/store";
 import {
-  Building2, Phone, Mail, MapPin, DollarSign, Bell,
-  Clock, Save, CheckCircle, ChefHat, User, Shield
-} from "lucide-react"
+  Building2,
+  Phone,
+  Mail,
+  MapPin,
+  DollarSign,
+  Bell,
+  Clock,
+  Save,
+  CheckCircle,
+  ChefHat,
+  User,
+  Shield,
+  CalendarClock,
+} from "lucide-react";
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+import {
+  obtenerConfiguracion,
+  actualizarConfiguracion,
+} from "@/lib/configuracion";
+
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="stat-card rounded-2xl p-6 border border-white/8">
       <h3 className="text-sm font-bold text-foreground uppercase tracking-widest mb-5 flex items-center gap-2">
@@ -16,40 +38,100 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       </h3>
       {children}
     </div>
-  )
+  );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <div>
-      <label className="text-xs text-muted-foreground mb-1.5 block">{label}</label>
+      <label className="text-xs text-muted-foreground mb-1.5 block">
+        {label}
+      </label>
       {children}
     </div>
-  )
+  );
 }
 
 export function SettingsPage() {
-  const { state, dispatch } = useApp()
-  const [settings, setSettings] = useState<Settings>({ ...state.settings })
-  const [saved, setSaved] = useState(false)
+  const { state, dispatch } = useApp();
+  const [settings, setSettings] = useState<Settings>({ ...state.settings });
+  const [saved, setSaved] = useState(false);
 
   const update = (key: keyof Settings, value: any) => {
-    setSettings(s => ({ ...s, [key]: value }))
-  }
+    setSettings((s) => ({ ...s, [key]: value }));
+  };
 
-  const handleSave = () => {
-    dispatch({ type: "UPDATE_SETTINGS", payload: settings })
-    setSaved(true)
-    setTimeout(() => setSaved(false), 3000)
-  }
+  useEffect(() => {
+    const cargarConfiguracion = async () => {
+      try {
+        const configuracion = await obtenerConfiguracion();
 
-  const inputClass = "w-full px-4 py-3 rounded-xl glass border border-white/10 text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-primary/50 bg-transparent"
+        setSettings((prev) => ({
+          ...prev,
+          workdayStart: configuracion.workdayStart,
+          workdayEnd: configuracion.workdayEnd,
+        }));
+
+        dispatch({
+          type: "UPDATE_SETTINGS",
+          payload: {
+            workdayStart: configuracion.workdayStart,
+            workdayEnd: configuracion.workdayEnd,
+          },
+        });
+      } catch (error) {
+        console.error("No fue posible cargar la configuración:", error);
+      }
+    };
+
+    cargarConfiguracion();
+  }, [dispatch]);
+
+  const handleSave = async () => {
+    try {
+      const configuracion = await actualizarConfiguracion({
+        workdayStart: settings.workdayStart,
+        workdayEnd: settings.workdayEnd,
+      });
+
+      setSettings((prev) => ({
+        ...prev,
+        workdayStart: configuracion.workdayStart,
+        workdayEnd: configuracion.workdayEnd,
+      }));
+
+      dispatch({
+        type: "UPDATE_SETTINGS",
+        payload: {
+          workdayStart: configuracion.workdayStart,
+          workdayEnd: configuracion.workdayEnd,
+        },
+      });
+
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (error) {
+      console.error("No fue posible guardar la configuración:", error);
+      alert("No fue posible guardar la Jornada.");
+    }
+  };
+
+  const inputClass =
+    "w-full px-4 py-3 rounded-xl glass border border-white/10 text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-primary/50 bg-transparent";
 
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
         <h2 className="text-xl font-bold text-foreground">Configuración</h2>
-        <p className="text-sm text-muted-foreground">Ajustes del sistema FastManager</p>
+        <p className="text-sm text-muted-foreground">
+          Ajustes del sistema FastManager
+        </p>
       </div>
 
       {/* Restaurant info */}
@@ -61,7 +143,7 @@ export function SettingsPage() {
                 <ChefHat className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <input
                   value={settings.restaurantName}
-                  onChange={e => update("restaurantName", e.target.value)}
+                  onChange={(e) => update("restaurantName", e.target.value)}
                   className={`${inputClass} pl-10`}
                   placeholder="FastBurger"
                 />
@@ -73,7 +155,7 @@ export function SettingsPage() {
               <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <input
                 value={settings.address}
-                onChange={e => update("address", e.target.value)}
+                onChange={(e) => update("address", e.target.value)}
                 className={`${inputClass} pl-10`}
                 placeholder="Calle 123 # 45-67"
               />
@@ -84,7 +166,7 @@ export function SettingsPage() {
               <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <input
                 value={settings.phone}
-                onChange={e => update("phone", e.target.value)}
+                onChange={(e) => update("phone", e.target.value)}
                 className={`${inputClass} pl-10`}
                 placeholder="+57 300 123 4567"
               />
@@ -96,7 +178,7 @@ export function SettingsPage() {
               <input
                 type="email"
                 value={settings.email}
-                onChange={e => update("email", e.target.value)}
+                onChange={(e) => update("email", e.target.value)}
                 className={`${inputClass} pl-10`}
                 placeholder="info@restaurante.com"
               />
@@ -107,8 +189,9 @@ export function SettingsPage() {
               <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <select
                 value={settings.currency}
-                onChange={e => update("currency", e.target.value)}
-                className={`${inputClass} pl-10`}>
+                onChange={(e) => update("currency", e.target.value)}
+                className={`${inputClass} pl-10`}
+              >
                 <option value="COP">COP — Peso colombiano</option>
                 <option value="USD">USD — Dólar estadounidense</option>
                 <option value="MXN">MXN — Peso mexicano</option>
@@ -127,7 +210,9 @@ export function SettingsPage() {
             <input
               type="number"
               value={settings.lowStockThreshold}
-              onChange={e => update("lowStockThreshold", Number(e.target.value))}
+              onChange={(e) =>
+                update("lowStockThreshold", Number(e.target.value))
+              }
               className={inputClass}
               min={1}
             />
@@ -136,7 +221,9 @@ export function SettingsPage() {
             <input
               type="number"
               value={settings.expirationAlertDays}
-              onChange={e => update("expirationAlertDays", Number(e.target.value))}
+              onChange={(e) =>
+                update("expirationAlertDays", Number(e.target.value))
+              }
               className={inputClass}
               min={1}
               max={30}
@@ -146,7 +233,9 @@ export function SettingsPage() {
         <div className="mt-4 p-4 rounded-xl glass border border-white/5">
           <div className="flex items-center gap-2 mb-2">
             <Bell className="w-4 h-4 text-primary" />
-            <span className="text-xs font-semibold text-foreground">Alertas automáticas activas</span>
+            <span className="text-xs font-semibold text-foreground">
+              Alertas automáticas activas
+            </span>
           </div>
           <ul className="space-y-1.5">
             {[
@@ -154,13 +243,54 @@ export function SettingsPage() {
               "Ingredientes con stock por debajo del mínimo",
               `Productos próximos a vencer (${settings.expirationAlertDays} días)`,
               "Pedidos entregados sin registrar pago",
-            ].map(item => (
-              <li key={item} className="flex items-center gap-2 text-xs text-muted-foreground">
+            ].map((item) => (
+              <li
+                key={item}
+                className="flex items-center gap-2 text-xs text-muted-foreground"
+              >
                 <CheckCircle className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
                 {item}
               </li>
             ))}
           </ul>
+        </div>
+      </Section>
+
+      {/* Workday */}
+      <Section title="Jornada Operativa">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field label="Hora de inicio de la jornada">
+            <div className="relative">
+              <CalendarClock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input
+                type="time"
+                value={settings.workdayStart}
+                onChange={(e) => update("workdayStart", e.target.value)}
+                className={`${inputClass} pl-10`}
+              />
+            </div>
+          </Field>
+
+          <Field label="Hora de finalización de la jornada">
+            <div className="relative">
+              <CalendarClock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input
+                type="time"
+                value={settings.workdayEnd}
+                onChange={(e) => update("workdayEnd", e.target.value)}
+                className={`${inputClass} pl-10`}
+              />
+            </div>
+          </Field>
+        </div>
+
+        <div className="mt-4 p-4 rounded-xl glass border border-primary/10">
+          <p className="text-xs text-muted-foreground leading-6">
+            Configura la jornada operativa del restaurante. Si la jornada cruza
+            la medianoche (ejemplo: 17:00 a 01:00), el Dashboard, los reportes y
+            los PDF utilizarán este horario para calcular las ventas de una
+            misma jornada.
+          </p>
         </div>
       </Section>
 
@@ -172,10 +302,10 @@ export function SettingsPage() {
               <input
                 type="number"
                 value={time}
-                onChange={e => {
-                  const updated = [...settings.defaultPrepTimes]
-                  updated[i] = Number(e.target.value)
-                  update("defaultPrepTimes", updated)
+                onChange={(e) => {
+                  const updated = [...settings.defaultPrepTimes];
+                  updated[i] = Number(e.target.value);
+                  update("defaultPrepTimes", updated);
                 }}
                 className={inputClass}
                 min={1}
@@ -196,8 +326,12 @@ export function SettingsPage() {
               <User className="w-5 h-5 text-white" />
             </div>
             <div>
-              <div className="text-sm font-semibold text-foreground">{state.user?.name}</div>
-              <div className="text-xs text-muted-foreground">{state.user?.email}</div>
+              <div className="text-sm font-semibold text-foreground">
+                {state.user?.name}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {state.user?.email}
+              </div>
             </div>
           </div>
           <div className="p-4 rounded-xl glass border border-white/5 flex items-center gap-3">
@@ -209,7 +343,9 @@ export function SettingsPage() {
                 {state.user?.role === "dueno" ? "Dueño" : "Empleado"}
               </div>
               <div className="text-xs text-muted-foreground">
-                {state.user?.role === "dueno" ? "Acceso completo al sistema" : "Acceso a pedidos y cocina"}
+                {state.user?.role === "dueno"
+                  ? "Acceso completo al sistema"
+                  : "Acceso a pedidos y cocina"}
               </div>
             </div>
           </div>
@@ -223,7 +359,8 @@ export function SettingsPage() {
           saved
             ? "bg-emerald-500/20 border border-emerald-500/30 text-emerald-400"
             : "gradient-brand text-white hover:opacity-90"
-        }`}>
+        }`}
+      >
         {saved ? (
           <>
             <CheckCircle className="w-4 h-4" />
@@ -237,5 +374,5 @@ export function SettingsPage() {
         )}
       </button>
     </div>
-  )
+  );
 }

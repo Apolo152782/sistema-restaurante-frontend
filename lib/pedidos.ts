@@ -29,6 +29,7 @@ export async function registrarPedido(pedido: any) {
 
   return await respuesta.json();
 }
+
 export async function eliminarPedido(id: string) {
   const respuesta = await fetch(`${URL_API}/pedidos/${id}`, {
     method: "DELETE",
@@ -38,6 +39,27 @@ export async function eliminarPedido(id: string) {
     throw new Error("No fue posible eliminar el pedido.");
   }
 }
+
+export async function actualizarPedido(id: string, pedido: any) {
+  const respuesta = await fetch(`${URL_API}/pedidos/${id}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(pedido),
+  });
+
+  if (!respuesta.ok) {
+    const error = await respuesta.text();
+
+    console.error(error);
+
+    throw new Error(error);
+  }
+
+  return await respuesta.json();
+}
+
 export async function actualizarEstadoPedido(id: string, status: string) {
   const respuesta = await fetch(`${URL_API}/pedidos/${id}/estado`, {
     method: "PUT",
@@ -53,6 +75,17 @@ export async function actualizarEstadoPedido(id: string, status: string) {
 
   return await respuesta.json();
 }
+
+export async function obtenerIngredientesPedido(id: string) {
+  const respuesta = await fetch(`${URL_API}/pedidos/${id}/ingredientes`);
+
+  if (!respuesta.ok) {
+    throw new Error("No fue posible obtener los ingredientes.");
+  }
+
+  return await respuesta.json();
+}
+
 export async function registrarPago(
   id: string,
   pago: {
@@ -75,6 +108,7 @@ export async function registrarPago(
 
   return await respuesta.json();
 }
+
 export async function agregarTiempo(id: string, minutes: number) {
   console.log("Llamando API", id, minutes);
 
@@ -90,6 +124,23 @@ export async function agregarTiempo(id: string, minutes: number) {
 
   if (!respuesta.ok) {
     throw new Error("No fue posible agregar tiempo.");
+  }
+
+  return await respuesta.json();
+}
+
+export async function cancelarManteniendoParaVenta(id: string) {
+  const respuesta = await fetch(
+    `${URL_API}/pedidos/${id}/cancelar-mantener-venta`,
+    {
+      method: "PUT",
+    },
+  );
+
+  if (!respuesta.ok) {
+    const error = await respuesta.text();
+    console.error(error);
+    throw new Error("No fue posible mantener el pedido para la venta.");
   }
 
   return await respuesta.json();

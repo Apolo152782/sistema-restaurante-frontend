@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
+import { obtenerIngredientes } from "@/lib/ingredientes";
 import {
   useApp,
   Product,
@@ -8,6 +9,7 @@ import {
   ProductExtra,
   formatCurrency,
   calculateProductCost,
+  calculateExtraCost,
   calculateAvailableQuantity,
 } from "@/lib/store";
 import {
@@ -57,7 +59,8 @@ function ProductModal({
   const [extras, setExtras] = useState<ProductExtra[]>(product?.extras || []);
   const [active, setActive] = useState(product?.active ?? true);
 
-  const [newExtraName, setNewExtraName] = useState("");
+  const [newExtraIngredientId, setNewExtraIngredientId] = useState("");
+  const [newExtraQuantity, setNewExtraQuantity] = useState("1");
   const [newExtraPrice, setNewExtraPrice] = useState("");
 
   const addRecipeItem = () => {
@@ -73,27 +76,52 @@ function ProductModal({
   };
 
   const addExtra = () => {
-    if (!newExtraName) return;
+    if (!newExtraIngredientId) return;
+
+    const ingrediente = state.ingredients.find(
+      (i) => i.id === newExtraIngredientId,
+    );
+
+    if (!ingrediente) return;
+
     setExtras([
       ...extras,
       {
         id: `e-${Date.now()}`,
-        name: newExtraName,
+        ingredientId: ingrediente.id,
+        name: ingrediente.name,
+        quantity: Number(newExtraQuantity) || 1,
         price: Number(newExtraPrice) || 0,
       },
     ]);
-    setNewExtraName("");
+
+    setNewExtraIngredientId("");
+    setNewExtraQuantity("1");
     setNewExtraPrice("");
   };
+
   const handleSave = async () => {
     if (!name || !price) return;
 
+    console.log("Recipe:", recipe);
     const p = {
       name,
       price: Number(price),
       category,
       active,
+
+      recipe: recipe.map((r) => ({
+        ingredienteId: r.ingredientId,
+        cantidad: Number(r.quantity),
+      })),
+
+      extras: extras.map((extra) => ({
+        ingredienteId: extra.ingredientId,
+        cantidad: Number(extra.quantity),
+        price: Number(extra.price),
+      })),
     };
+    console.log("Producto a enviar:", p);
 
     try {
       if (product) {
@@ -285,43 +313,105 @@ function ProductModal({
               Extras / Modificadores
             </label>
             <div className="space-y-2 mb-3">
-              {extras.map((extra, idx) => (
-                <div
-                  key={extra.id}
-                  className="flex items-center gap-3 p-3 rounded-xl glass border border-white/10 text-sm"
-                >
-                  <span className="flex-1 text-foreground">{extra.name}</span>
-                  <span className="text-primary font-semibold">
-                    {formatCurrency(extra.price)}
-                  </span>
-                  <button
-                    onClick={() =>
-                      setExtras(extras.filter((_, i) => i !== idx))
-                    }
-                    className="text-muted-foreground hover:text-red-400 transition-colors"
+              {extras.map((extra, idx) => {
+                const extraCost = calculateExtraCost(extra, state.ingredients);
+
+                const extraMargin =
+                  extra.price > 0
+                    ? Math.round(
+                        ((extra.price - extraCost) / extra.price) * 100,
+                      )
+                    : 0;
+
+                return (
+                  <div
+                    key={extra.id}
+                    className="flex items-center gap-3 p-3 rounded-xl glass border border-white/10 text-sm"
                   >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-foreground">
+                        {extra.name}
+                      </div>
+
+                      <div className="text-xs text-muted-foreground">
+                        {extra.quantity}{" "}
+                        {state.ingredients.find(
+                          (i) => i.id === extra.ingredientId,
+                        )?.unit || ""}
+                        {" · "}
+                        Costo {formatCurrency(extraCost)}
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      <div className="text-primary font-semibold">
+                        +{formatCurrency(extra.price)}
+                      </div>
+
+                      <div
+                        className={`text-xs font-semibold ${
+                          extraMargin > 50
+                            ? "text-emerald-400"
+                            : extraMargin > 30
+                              ? "text-yellow-400"
+                              : "text-red-400"
+                        }`}
+                      >
+                        {extraMargin}% margen
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() =>
+                        setExtras(extras.filter((_, i) => i !== idx))
+                      }
+                      className="text-muted-foreground hover:text-red-400 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
-            <div className="flex gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_120px_140px_44px] gap-3">
+              <select
+                value={newExtraIngredientId}
+                onChange={(e) => setNewExtraIngredientId(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl glass border border-white/10 text-foreground text-sm bg-transparent focus:outline-none focus:border-primary/50"
+              >
+                <option value="">Seleccionar ingrediente</option>
+
+                {state.ingredients.map((ing) => (
+                  <option key={ing.id} value={ing.id}>
+                    {ing.name} ({ing.unit})
+                  </option>
+                ))}
+              </select>
+
               <input
-                value={newExtraName}
-                onChange={(e) => setNewExtraName(e.target.value)}
-                placeholder="Nombre extra"
-                className="flex-1 px-3 py-2 rounded-xl glass border border-white/10 text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-primary/50"
+                type="number"
+                value={newExtraQuantity}
+                onChange={(e) => setNewExtraQuantity(e.target.value)}
+                placeholder="Cantidad"
+                min={0.01}
+                step={0.01}
+                className="w-full px-3 py-2 rounded-xl glass border border-white/10 text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-primary/50"
               />
+
               <input
                 type="number"
                 value={newExtraPrice}
                 onChange={(e) => setNewExtraPrice(e.target.value)}
-                placeholder="Precio"
-                className="w-28 px-3 py-2 rounded-xl glass border border-white/10 text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-primary/50"
+                placeholder="Precio adicional"
+                min={0}
+                step={0.01}
+                className="w-full px-3 py-2 rounded-xl glass border border-white/10 text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-primary/50"
               />
+
               <button
                 onClick={addExtra}
-                className="px-4 py-2 rounded-xl gradient-brand text-white text-sm font-semibold"
+                disabled={!newExtraIngredientId || !newExtraPrice}
+                className="w-11 h-10 rounded-xl gradient-brand text-white flex items-center justify-center disabled:opacity-40 hover:opacity-90 transition-all"
               >
                 <Plus className="w-4 h-4" />
               </button>
@@ -427,21 +517,28 @@ export function ProductsPage() {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
 
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "active" | "inactive"
+  >("active");
+
   useEffect(() => {
-    async function cargarProductos() {
+    async function cargarDatos() {
       try {
-        const productos = await obtenerProductos();
+        const [productos, ingredientes] = await Promise.all([
+          obtenerProductos(),
+          obtenerIngredientes(),
+        ]);
 
         dispatch({
           type: "CARGAR_PRODUCTOS",
           payload: productos,
         });
       } catch (error) {
-        console.error("Error cargando productos:", error);
+        console.error("Error cargando datos:", error);
       }
     }
 
-    cargarProductos();
+    cargarDatos();
   }, [dispatch]);
 
   const categories = useMemo(() => {
@@ -454,35 +551,22 @@ export function ProductsPage() {
       state.products.filter((p) => {
         if (categoryFilter !== "all" && p.category !== categoryFilter)
           return false;
+
         if (search && !p.name.toLowerCase().includes(search.toLowerCase()))
           return false;
+
+        if (statusFilter === "active" && !p.active) return false;
+
+        if (statusFilter === "inactive" && p.active) return false;
+
         return true;
       }),
-    [state.products, categoryFilter, search],
+    [state.products, categoryFilter, search, statusFilter],
   );
 
   const handleEdit = (p: Product) => {
     setEditProduct(p);
     setShowModal(true);
-  };
-
-  const handleDelete = async (id: string) => {
-    const confirmar = confirm("¿Deseas eliminar este producto?");
-
-    if (!confirmar) return;
-
-    try {
-      await eliminarProducto(id);
-
-      const productos = await obtenerProductos();
-
-      dispatch({
-        type: "CARGAR_PRODUCTOS",
-        payload: productos,
-      });
-    } catch (error) {
-      console.error(error);
-    }
   };
 
   return (
@@ -509,13 +593,51 @@ export function ProductsPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-col gap-4">
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Buscar producto..."
           className="flex-1 min-w-40 px-4 py-2.5 rounded-xl glass border border-white/10 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/50"
         />
+
+        {/* Estado */}
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={() => setStatusFilter("active")}
+            className={`px-4 py-2 rounded-xl text-xs font-semibold border transition-all ${
+              statusFilter === "active"
+                ? "gradient-brand text-white border-transparent"
+                : "glass border-white/10 text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Activos
+          </button>
+
+          <button
+            onClick={() => setStatusFilter("inactive")}
+            className={`px-4 py-2 rounded-xl text-xs font-semibold border transition-all ${
+              statusFilter === "inactive"
+                ? "gradient-brand text-white border-transparent"
+                : "glass border-white/10 text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Inactivos
+          </button>
+
+          <button
+            onClick={() => setStatusFilter("all")}
+            className={`px-4 py-2 rounded-xl text-xs font-semibold border transition-all ${
+              statusFilter === "all"
+                ? "gradient-brand text-white border-transparent"
+                : "glass border-white/10 text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Todos
+          </button>
+        </div>
+
+        {/* Categorías */}
         <div className="flex gap-2 flex-wrap">
           <button
             onClick={() => setCategoryFilter("all")}
@@ -525,8 +647,9 @@ export function ProductsPage() {
                 : "glass border-white/10 text-muted-foreground hover:text-foreground"
             }`}
           >
-            Todos
+            Todas
           </button>
+
           {categories.map((c) => (
             <button
               key={c}
@@ -583,12 +706,6 @@ export function ProductsPage() {
                     className="w-7 h-7 rounded-lg glass border border-white/10 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
                   >
                     <Edit className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(product.id)}
-                    className="w-7 h-7 rounded-lg glass border border-red-500/20 flex items-center justify-center text-red-400 hover:bg-red-500/10 transition-colors"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>

@@ -6,8 +6,11 @@ import {
   Order,
   OrderItem,
   OrderItemExtra,
+  ProductExtra,
   formatCurrency,
   calculateAvailableQuantity,
+  getTotalStock,
+  Product,
 } from "@/lib/store";
 import {
   X,
@@ -20,7 +23,7 @@ import {
   MapPin,
   Users,
 } from "lucide-react";
-import { registrarPedido } from "@/lib/pedidos";
+import { registrarPedido, actualizarPedido } from "@/lib/pedidos";
 
 interface CartItem {
   productId: string;
@@ -34,9 +37,11 @@ import { useEffect } from "react";
 import { obtenerProductos } from "@/lib/productos";
 
 export function CreateOrderModal({
+  order,
   onClose,
   onCreated,
 }: {
+  order?: Order;
   onClose: () => void;
   onCreated: () => Promise<void> | void;
 }) {
@@ -72,6 +77,30 @@ export function CreateOrderModal({
   useEffect(() => {
     cargarProductos();
   }, []);
+
+  useEffect(() => {
+    if (!order) return;
+
+    setOrderType(order.type);
+
+    setTableNumber(order.tableNumber ?? "");
+
+    setCustomerName(order.customerName ?? "");
+
+    setAddress(order.address ?? "");
+
+    setEstimatedMinutes(order.estimatedMinutes);
+
+    setCart(
+      order.items.map((item) => ({
+        productId: item.productId,
+        productName: item.productName,
+        unitPrice: item.unitPrice,
+        quantity: item.quantity,
+        selectedExtras: [],
+      })),
+    );
+  }, [order]);
 
   const filteredProducts = useMemo(
     () =>
@@ -158,12 +187,22 @@ export function CreateOrderModal({
         items: cart.map((item) => ({
           productId: item.productId,
           quantity: item.quantity,
+          extras: item.selectedExtras.map((extra) => ({
+            extraId: extra.extraId,
+            ingredienteId: extra.ingredientId,
+            cantidad: extra.quantity,
+            price: extra.price,
+          })),
         })),
       };
 
-      console.log("Pedido enviado:", pedido);
+      console.log("PEDIDO ENVIADO:", JSON.stringify(pedido, null, 2));
 
-      await registrarPedido(pedido);
+      if (order) {
+        await actualizarPedido(order.id, pedido);
+      } else {
+        await registrarPedido(pedido);
+      }
 
       await onCreated();
 
@@ -193,6 +232,86 @@ export function CreateOrderModal({
     if (step === "time")
       return estimatedMinutes !== null || Number(customMinutes) > 0;
     return false;
+  };
+
+  const calcularInventarioDisponible = (
+    product: Product,
+    cartQuantity: number,
+    selectedExtras: OrderItemExtra[],
+  ): number => {
+    const consumoPorIngrediente = new Map<string, number>();
+
+    // Si el producto todavía no está en el carrito,
+    // no debemos descontar absolutamente nada.
+    if (cartQuantity === 0) {
+      let stockMinimo = Infinity;
+
+      for (const receta of product.recipe) {
+        const ingredient = state.ingredients.find(
+          (i) => i.id === receta.ingredientId,
+        );
+
+        if (!ingredient) {
+          return 0;
+        }
+
+        const stock = getTotalStock(ingredient);
+
+        if (stock < stockMinimo) {
+          stockMinimo = stock;
+        }
+      }
+
+      return stockMinimo === Infinity ? 999 : stockMinimo;
+    }
+
+    // =====================================================
+    // CONSUMO REAL DEL PRODUCTO YA SELECCIONADO
+    // =====================================================
+
+    // Receta
+    for (const receta of product.recipe) {
+      const consumo = receta.quantity * cartQuantity;
+
+      consumoPorIngrediente.set(
+        receta.ingredientId,
+        (consumoPorIngrediente.get(receta.ingredientId) || 0) + consumo,
+      );
+    }
+
+    // Extras seleccionados
+    for (const extra of selectedExtras) {
+      const consumo = extra.quantity * cartQuantity;
+
+      consumoPorIngrediente.set(
+        extra.ingredientId,
+        (consumoPorIngrediente.get(extra.ingredientId) || 0) + consumo,
+      );
+    }
+
+    if (consumoPorIngrediente.size === 0) {
+      return 999;
+    }
+
+    let minDisponible = Infinity;
+
+    for (const [ingredientId, consumo] of consumoPorIngrediente) {
+      const ingredient = state.ingredients.find((i) => i.id === ingredientId);
+
+      if (!ingredient) {
+        return 0;
+      }
+
+      const stock = getTotalStock(ingredient);
+
+      const disponible = Math.max(0, stock - consumo);
+
+      if (disponible < minDisponible) {
+        minDisponible = disponible;
+      }
+    }
+
+    return minDisponible === Infinity ? 0 : minDisponible;
   };
 
   return (
@@ -345,11 +464,17 @@ export function CreateOrderModal({
 
               {filteredProducts.map((product) => {
                 const cartItem = cart.find((i) => i.productId === product.id);
-                const available = calculateAvailableQuantity(
+
+                const selectedExtras = cartItem?.selectedExtras || [];
+
+                const availableForCart = calcularInventarioDisponible(
                   product,
-                  state.ingredients,
+                  cartItem?.quantity || 0,
+                  selectedExtras,
                 );
+
                 const isExpanded = expandedProduct === product.id;
+
                 return (
                   <div
                     key={product.id}
@@ -362,7 +487,7 @@ export function CreateOrderModal({
                             {product.name}
                           </span>
                           <span className="text-xs text-muted-foreground">
-                            ({available} disp.)
+                            ({availableForCart} disp.)
                           </span>
                         </div>
                         <span className="text-primary font-bold text-sm">
@@ -370,7 +495,6 @@ export function CreateOrderModal({
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
-                        {/*
                         {product.extras.length > 0 && (
                           <button
                             onClick={() =>
@@ -380,7 +504,8 @@ export function CreateOrderModal({
                           >
                             Extras
                           </button>
-                        )}*/}
+                        )}
+
                         {cartItem ? (
                           <div className="flex items-center gap-2 bg-primary/10 rounded-xl px-2 py-1 border border-primary/30">
                             <button
@@ -418,24 +543,27 @@ export function CreateOrderModal({
                       </div>
                     </div>
                     {/* Extras panel */}
-                    {/*
                     {isExpanded && cartItem && product.extras.length > 0 && (
                       <div className="px-4 pb-4 border-t border-white/5 pt-3">
                         <p className="text-xs text-muted-foreground mb-2">
                           Extras para {product.name}:
                         </p>
+
                         <div className="flex flex-wrap gap-2">
-                          {product.extras.map((extra) => {
+                          {product.extras.map((extra: ProductExtra) => {
                             const isSelected = cartItem.selectedExtras.some(
                               (e) => e.extraId === extra.id,
                             );
+
                             return (
                               <button
                                 key={extra.id}
                                 onClick={() =>
                                   toggleExtra(product.id, {
                                     extraId: extra.id,
+                                    ingredientId: extra.ingredientId,
                                     name: extra.name,
+                                    quantity: extra.quantity,
                                     price: extra.price,
                                   })
                                 }
@@ -446,6 +574,9 @@ export function CreateOrderModal({
                                 }`}
                               >
                                 {extra.name}{" "}
+                                <span className="text-muted-foreground">
+                                  ({extra.quantity})
+                                </span>{" "}
                                 {extra.price > 0 &&
                                   `+${formatCurrency(extra.price)}`}
                               </button>
@@ -454,8 +585,6 @@ export function CreateOrderModal({
                         </div>
                       </div>
                     )}
-
-                    */}
                   </div>
                 );
               })}

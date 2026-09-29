@@ -39,6 +39,9 @@ function CreatePurchaseModal({
   const cargarIngredientes = async () => {
     try {
       const datos = await obtenerIngredientes();
+
+      console.log("Respuesta API ingredientes:", datos);
+
       setIngredientes(datos);
     } catch (error) {
       console.error(error);
